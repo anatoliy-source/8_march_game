@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>С 8 Марта! Лови цветы 🌸</title>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
@@ -292,14 +292,9 @@
     border-radius: 10px; transition: width 0.1s linear;
   }
 
-  /* Кнопка паузы (мобильная) */
-  #pauseBtn {
-    position: fixed; top: 20px; right: 20px; z-index: 101;
-    background: rgba(255,255,255,0.8); border: none; width: 45px; height: 45px;
-    border-radius: 50%; font-size: 1.2rem; cursor: pointer; display: none;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.1); color: var(--accent-dark);
-  }
-  @media (max-width: 768px) { #pauseBtn { display: block; } }
+  
+  
+  
 
 
   /* --- ЭКРАНЫ (МЕНЮ, КОНЕЦ ИГРЫ) --- */
@@ -390,7 +385,7 @@
     <div id="timerBar"></div>
   </div>
   
-  <button id="pauseBtn">⏸️</button>
+  
 
   <div class="screen" id="startScreen">
     <div class="card">
@@ -932,8 +927,7 @@ const Game = {
     document.addEventListener('mousedown', () => AudioEngine.unlock(), { once: true });
     document.addEventListener('touchstart', () => AudioEngine.unlock(), { once: true });
 
-    // Кнопка паузы
-    document.getElementById('pauseBtn').addEventListener('click', () => this.togglePause());
+    
   },
 
   resize: function() {
@@ -993,18 +987,8 @@ const Game = {
     this.rafId = requestAnimationFrame(this._boundLoop);
   },
 
-  togglePause: function() {
-    if (this.state === 'playing') {
-      this.state = 'paused';
-      document.getElementById('pauseBtn').textContent = '▶️';
-      // Можно показать оверлей паузы при желании
-    } else if (this.state === 'paused') {
-      this.state = 'playing';
-      document.getElementById('pauseBtn').textContent = '⏸️';
-      this.lastTime = performance.now(); // Чтобы не было скачка времени
-      requestAnimationFrame(this._boundLoop);
-    }
-  },
+
+  
 
   gameOver: function() {
     this.state = 'over';
