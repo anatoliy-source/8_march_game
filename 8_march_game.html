@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>С 8 Марта! Лови цветы 🌸</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  /* --- СБРОС СТИЛЕЙ И БАЗОВЫЕ --- */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; outline: none; }
+  
+  :root {
+    --bg-top: #ffebf5;
+    --bg-bottom: #e0f7fa;
+    --text-main: #ad1457;
+    --accent: #ff69b4;
+    --accent-dark: #c2185b;
+    --grass-1: #aed581;
+    --grass-2: #8bc34a;
+  }
+
+  body {
+    font-family: 'Nunito', sans-serif;
+    background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+    height: 100vh; width: 100vw;
+    overflow: hidden;
+    color: var(--text-main);
+    user-select: none;
+    touch-action: none; /* Важно для мобильных */
+    cursor: default;
+  }
+
+  /* --- ИГРОВОЙ ХОЛСТ И ФОН --- */
+  /* На широких экранах игра центрируется и не выходит за 800px */
+  :root { --gw: min(100vw, 800px); }
+
+  /* Боковые шторки — скрывают область за пределами игрового поля */
+  .game-curtain {
+    position: fixed; top: 0; bottom: 0; z-index: 500;
+    background: rgba(255, 235, 245, 0.98);
+    pointer-events: none;
+    display: none; /* показываем только на широких экранах */
+  }
+  .game-curtain-left  { left: 0; right: calc(50% + var(--gw)/2); }
+  .game-curtain-right { left: calc(50% + var(--gw)/2); right: 0; }
+  @media (min-width: 801px) { .game-curtain { display: block; } }
+
+  #gameCanvas { position: fixed; inset: 0; z-index: 1; will-change: contents; }
+  #menuCanvas { position: fixed; inset: 0; z-index: 5; pointer-events: none; will-change: contents; }
+  .cloud {
+    position: fixed; background: rgba(255,255,255,0.8); border-radius: 50px;
+    z-index: 2; pointer-events: none; animation: cloudFlow linear infinite;
+  }
+  @keyframes cloudFlow {
+    from { transform: translateX(-200px); }
+    to { transform: translateX(calc(100vw + 200px)); }
+  }
+
+  /* Земля/Трава */
+  .ground {
+    position: fixed; bottom: 0; left: 0; right: 0; height: 10vh;
+    background: linear-gradient(180deg, var(--grass-1) 0%, var(--grass-2) 100%);
+    z-index: 10; border-radius: 50% 50% 0 0 / 15px 15px 0 0;
+    box-shadow: 0 -5px 15px rgba(0,0,0,0.05);
+  }
+  .ground-deco {
+    position: absolute; top: -15px; left: 0; width: 100%; text-align: center;
+    font-size: 20px; letter-spacing: 5px; opacity: 0.8;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     CSS-КОРЗИНА v3 — чистая архитектура, без конфликтов
+     Структура HTML:
+       #basket  (обёртка, позиционируется JS через .style.left)
+         .bk-handle   ручка
+         .bk-rim      кант / горлышко + бантик (::before/::after)
+         .bk-body     тело с плетением + overflow:hidden
+           .bk-flowers  пойманные цветы (растут снизу вверх)
+         .bk-shadow   декоративная тень под корзиной
+     ═══════════════════════════════════════════════════════════ */
+
+  /* -- ОБЁРТКА ------------------------------------------------ */
+  #basket {
+    position: fixed;
+    bottom: calc(10vh - 4px);
+    left: 0;
+    transform: translateX(calc(var(--basket-x, 50vw) - 50%));
+    z-index: 15;
+    width: 140px;
+    pointer-events: none;
+    will-change: transform;
+    contain: layout style;
+    /* filter убран — он вызывал repaint каждый кадр при движении */
+  }
+
+  /* -- РУЧКА -------------------------------------------------- */
+  .bk-handle {
+    width: 64px;
+    height: 36px;
+    border: 7px solid #b8722a;
+    border-bottom: none;
+    border-radius: 50px 50px 0 0;
+    margin: 0 auto -4px; /* -4px подтягивает к канту */
+    position: relative;
+    box-shadow:
+      inset 0 5px 8px rgba(255,220,160,0.4),
+      0 -2px 6px rgba(0,0,0,0.12);
+  }
+  /* Тонкое внутреннее кольцо ручки (объём) */
+  .bk-handle::after {
+    content: '';
+    position: absolute;
+    inset: 3px 3px 0;
+    border: 2px solid rgba(255,200,120,0.35);
+    border-bottom: none;
+    border-radius: 50px 50px 0 0;
+  }
+
+  /* -- КАНТ (горлышко) + БАНТИК ------------------------------ */
+  .bk-rim {
+    position: relative;
+    width: 140px;
+    height: 14px;
+    /* градиент деревянного канта */
+    background: linear-gradient(180deg,
+      #d4944a 0%, #c07830 50%, #a05820 100%);
+    border-radius: 6px 6px 0 0;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.22);
+    z-index: 2;
+  }
+  /* Розовая ленточка на канте */
+  .bk-rim::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 5px;
+    background: linear-gradient(90deg,
+      transparent 8%,
+      #ff80ab 8%, #ff4081 48%, #ff80ab 52%, #ff4081 92%,
+      transparent 92%);
+    border-radius: 3px;
+  }
+  /* Бантик над кантом */
+  .bk-rim::before {
+    content: '🎀';
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 28px;
+    line-height: 1;
+    /* убираем влияние drop-shadow родителя на эмодзи */
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.25));
+  }
+
+  /* -- ТЕЛО КОРЗИНЫ ------------------------------------------ */
+  .bk-body {
+    position: relative;
+    width: 140px;
+    height: 68px;
+    overflow: hidden;
+    clip-path: polygon(4% 0%, 96% 0%, 100% 100%, 0% 100%);
+    background:
+      repeating-linear-gradient(90deg,
+        transparent 0px, transparent 11px,
+        rgba(120,60,10,0.32) 11px, rgba(120,60,10,0.32) 14px),
+      repeating-linear-gradient(180deg,
+        transparent 0px, transparent 9px,
+        rgba(255,255,255,0.14) 9px, rgba(255,255,255,0.14) 11px),
+      linear-gradient(155deg,
+        #f0c882 0%,
+        #d9924a 30%,
+        #c07030 65%,
+        #9a5a20 100%);
+    box-shadow:
+      inset  5px 0  12px rgba(0,0,0,0.18),
+      inset -5px 0  12px rgba(0,0,0,0.18),
+      inset  0  -8px 14px rgba(0,0,0,0.22),
+      inset  0   5px 10px rgba(255,240,200,0.15),
+      0 8px 14px rgba(100,50,0,0.28);
+  }
+
+  /* -- ЦВЕТЫ ВНУТРИ ТЕЛА ------------------------------------- */
+  /*
+     Цветы накапливаются снизу вверх.
+     .bk-flowers — контейнер, прибит к низу .bk-body.
+     overflow:hidden на .bk-body отрезает всё лишнее.
+  */
+  .bk-flowers {
+    position: absolute;
+    bottom: 0;
+    left: 0; right: 0;
+    /* Выравниваем цветы по центру снизу */
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap-reverse;        /* новые снизу, старые выталкиваются вверх */
+    align-content: flex-end;
+    justify-content: center;
+    gap: 1px;
+    padding: 2px 4px;
+    /* Высота = высота .bk-body; overflow:hidden на родителе обрежет */
+    height: 68px;
+    font-size: 16px;
+    line-height: 1.05;
+    pointer-events: none;
+  }
+  /* Каждый цветок «падает» на дно корзины */
+  .bk-f {
+    display: inline-block;
+    animation: bkFlowerDrop 0.35s cubic-bezier(0.34, 1.45, 0.64, 1) both;
+    transform-origin: center bottom;
+  }
+  @keyframes bkFlowerDrop {
+    0%   { transform: translateY(-22px) scale(0.5) rotate(-15deg); opacity: 0; }
+    60%  { transform: translateY(3px)   scale(1.1) rotate(4deg);  opacity: 1; }
+    100% { transform: translateY(0)     scale(1)   rotate(0deg);  opacity: 1; }
+  }
+
+  /* -- ДЕКОРАТИВНАЯ ТЕНЬ ПОД КОРЗИНОЙ ----------------------- */
+  .bk-shadow {
+    width: 120px;
+    height: 8px;
+    margin: 0 auto;
+    background: radial-gradient(ellipse, rgba(0,0,0,0.22) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+
+  /* -- АНИМАЦИИ КОРЗИНЫ -------------------------------------- */
+  /* Bounce при поимке цветка */
+  #basket.catch-bounce {
+    animation: bkBounce 0.3s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+  }
+  @keyframes bkBounce {
+    0%   { transform: translateX(calc(var(--basket-x, 50vw) - 50%)) scaleX(1)    scaleY(1); }
+    30%  { transform: translateX(calc(var(--basket-x, 50vw) - 50%)) scaleX(1.1)  scaleY(0.9); }
+    60%  { transform: translateX(calc(var(--basket-x, 50vw) - 50%)) scaleX(0.97) scaleY(1.03); }
+    100% { transform: translateX(calc(var(--basket-x, 50vw) - 50%)) scaleX(1)    scaleY(1); }
+  }
+  /* Тряска при бомбе */
+  #basket.damage {
+    animation: bkShake 0.42s ease-in-out;
+  }
+  #basket.damage .bk-body {
+    box-shadow:
+      inset  5px 0  12px rgba(0,0,0,0.18),
+      inset -5px 0  12px rgba(0,0,0,0.18),
+      inset  0  -8px 14px rgba(0,0,0,0.22),
+      inset  0   5px 10px rgba(255,240,200,0.15),
+      0 8px 14px rgba(100,50,0,0.28),
+      0 0 20px 4px #ef5350;
+    filter: saturate(0.2) brightness(1.5);
+  }
+  @keyframes bkShake {
+    0%,100% { transform: translateX(calc(var(--basket-x, 50vw) - 50%)) rotate(0deg); }
+    20%,60% { transform: translateX(calc(var(--basket-x, 50vw) - 50% - 8px)) rotate(-5deg); }
+    40%,80% { transform: translateX(calc(var(--basket-x, 50vw) - 50% + 8px)) rotate( 5deg); }
+  }
+  #basket.slow-pulse .bk-body {
+    animation: bkSlowPulse 1.2s ease-in-out infinite alternate;
+  }
+  @keyframes bkSlowPulse {
+    from { box-shadow: inset 5px 0 12px rgba(0,0,0,0.18), inset -5px 0 12px rgba(0,0,0,0.18), inset 0 -8px 14px rgba(0,0,0,0.22), inset 0 5px 10px rgba(255,240,200,0.15), 0 8px 14px rgba(100,50,0,0.28), 0 0 8px 2px #81d4fa; }
+    to   { box-shadow: inset 5px 0 12px rgba(0,0,0,0.18), inset -5px 0 12px rgba(0,0,0,0.18), inset 0 -8px 14px rgba(0,0,0,0.22), inset 0 5px 10px rgba(255,240,200,0.15), 0 8px 14px rgba(100,50,0,0.28), 0 0 22px 6px #4fc3f7; }
+  }
+
+  /* --- HUD (ИНТЕРФЕЙС ВО ВРЕМЯ ИГРЫ) --- */
+  .hud {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    z-index: 100; display: flex; align-items: center; gap: 15px;
+    padding: 10px 25px; background: rgba(255,255,255,0.92);
+    border-radius: 50px;
+    border: 2px solid rgba(255,105,180,0.3);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    white-space: nowrap;
+  }
+  .hud-item { display: flex; align-items: center; gap: 5px; font-weight: 900; font-size: 1.1rem; }
+  .hud-val { color: var(--accent-dark); font-size: 1.3rem; }
+  .lives { color: #e91e63; letter-spacing: 2px; }
+
+  /* Полоса времени */
+  .timer-container {
+    position: fixed; top: 75px; left: 50%; transform: translateX(-50%);
+    width: 200px; height: 8px; background: rgba(255,255,255,0.5);
+    border-radius: 10px; overflow: hidden; z-index: 99;
+    border: 1px solid rgba(255,105,180,0.2);
+  }
+  #timerBar {
+    height: 100%; width: 100%;
+    background: linear-gradient(90deg, #ff80ab, var(--accent));
+    border-radius: 10px; transition: width 0.1s linear;
+  }
+
+  /* Кнопка паузы (мобильная) */
+  #pauseBtn {
+    position: fixed; top: 20px; right: 20px; z-index: 101;
+    background: rgba(255,255,255,0.8); border: none; width: 45px; height: 45px;
+    border-radius: 50%; font-size: 1.2rem; cursor: pointer; display: none;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.1); color: var(--accent-dark);
+  }
+  @media (max-width: 768px) { #pauseBtn { display: block; } }
+
+
+  /* --- ЭКРАНЫ (МЕНЮ, КОНЕЦ ИГРЫ) --- */
+  .screen {
+    position: fixed; inset: 0; z-index: 200;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(255, 240, 248, 0.75);
+    padding: 20px; transition: opacity 0.5s, visibility 0.5s;
+  }
+  .screen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+  .card {
+    background: white; padding: 40px; border-radius: 30px;
+    text-align: center; box-shadow: 0 15px 40px rgba(255,105,180,0.2);
+    border: 3px solid #f8bbd0; max-width: 450px; width: 100%;
+    animation: cardIn 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes cardIn {
+    from { transform: translateY(30px) scale(0.9); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+  }
+
+  .title {
+    font-size: clamp(2rem, 8vw, 3rem); font-weight: 900;
+    background: linear-gradient(135deg, #ec407a, #ffab40);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    margin-bottom: 15px; line-height: 1.1;
+  }
+  .subtitle { font-size: 1.1rem; color: #880e4f; font-weight: 700; margin-bottom: 25px; opacity: 0.8; }
+  
+  .rules { text-align: left; background: #fff8fa; padding: 20px; border-radius: 15px; margin-bottom: 30px; border: 1px solid #f48fb1; }
+  .rules-item { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 0.95rem; }
+  .rules-item:last-child { margin-bottom: 0; }
+  .icon-box { font-size: 1.4rem; width: 30px; text-align: center; }
+
+  .btn {
+    padding: 15px 40px; font-family: inherit; font-size: 1.2rem; font-weight: 900;
+    color: white; border: none; border-radius: 50px; cursor: pointer;
+    background: linear-gradient(135deg, #ff4081, #ff80ab);
+    box-shadow: 0 5px 20px rgba(255,64,129,0.4); transition: transform 0.1s, box-shadow 0.2s;
+  }
+  .btn:hover { box-shadow: 0 7px 25px rgba(255,64,129,0.6); }
+  .btn:active { transform: scale(0.96); box-shadow: 0 3px 10px rgba(255,64,129,0.4); }
+
+  /* Экран конца игры */
+  #endScore { font-size: 4rem; font-weight: 900; color: var(--accent-dark); margin: 10px 0; line-height: 1; }
+  #endGrade { font-size: 1.8rem; margin-bottom: 10px; }
+  #endMessage { font-size: 1rem; color: #666; line-height: 1.5; margin-bottom: 25px; }
+
+
+</style>
+</head>
+<body>
+
+  <canvas id="gameCanvas"></canvas>
+  <canvas id="menuCanvas"></canvas>
+  <!-- Шторки — скрывают область за пределами 800px на широких экранах -->
+  <div class="game-curtain game-curtain-left"></div>
+  <div class="game-curtain game-curtain-right"></div>
+  <div class="cloud" style="width:200px; height:60px; top:10%; left:-10%; animation-duration:25s;"></div>
+  <div class="cloud" style="width:150px; height:50px; top:25%; left:-20%; animation-duration:35s; animation-delay:-10s; opacity:0.6;"></div>
+  <div class="cloud" style="width:250px; height:80px; top:15%; left:-15%; animation-duration:40s; animation-delay:-20s;"></div>
+  
+  <div class="ground">
+    <div class="ground-deco">🌿🌸🍀🌷🌿🌼🍀</div>
+  </div>
+
+  <!-- CSS-корзина v3 -->
+  <div id="basket">
+    <div class="bk-handle"></div>
+    <div class="bk-rim"></div>
+    <div class="bk-body">
+      <div class="bk-flowers" id="basketFlowers"></div>
+    </div>
+    <div class="bk-shadow"></div>
+  </div>
+
+  <div class="hud" id="gameHud" style="display:none;">
+    <div class="hud-item">🌸 <span class="hud-val" id="scoreVal">0</span></div>
+    <div class="hud-item">🔥 <span class="hud-val" id="comboVal">x1</span></div>
+    <div class="hud-item"><span class="lives" id="livesVal">❤️❤️❤️</span></div>
+  </div>
+  <div class="timer-container" id="timerGui" style="display:none;">
+    <div id="timerBar"></div>
+  </div>
+  
+  <button id="pauseBtn">⏸️</button>
+
+  <div class="screen" id="startScreen">
+    <div class="card">
+      <h1 class="title">С 8 Марта!</h1>
+      <p class="subtitle">Пусть этот день будет наполнен цветами. Собери самый большой букет! 💐</p>
+      
+      <div class="rules">
+        <div class="rules-item">
+          <div class="icon-box">🧺</div>
+          <div>Лови цветы, управляя корзиной.</div>
+        </div>
+        <div class="rules-item">
+          <div class="icon-box">🌸</div>
+          <div>Каждый цветок — плюс к счету.</div>
+        </div>
+        <div class="rules-item">
+          <div class="icon-box">🔥</div>
+          <div>Не упускай цветы для комбо-бонуса.</div>
+        </div>
+        <div class="rules-item">
+          <div class="icon-box">💣</div>
+          <div>Бомбочки портят настроение.</div>
+        </div>
+        <div class="rules-item">
+          <div class="icon-box">⏱️</div>
+          <div>У тебя 3 жизни и 30 секунд. Удачи!</div>
+        </div>
+      </div>
+      
+      <button class="btn" onclick="Game.start()">Собрать букет! 💐</button>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="endScreen">
+    <div class="card">
+      <div id="endEmoji" style="font-size:5rem; margin-bottom:10px;">🎉</div>
+      <h1 class="title" id="endTitle">Отлично!</h1>
+      <p style="font-size:1.1rem; font-weight:700;">Твой счет:</p>
+      <div id="endScore">0</div>
+      <div id="endGrade">⭐⭐⭐</div>
+      <p id="endMessage">Поздравляем с праздником весны! Желаем счастья, улыбок и море цветов!</p>
+      
+      <button class="btn" onclick="Game.start()">Играть снова 🔄</button>
+    </div>
+  </div>
+
+<script>
+/**
+ * AudioEngine — Web Audio API звуки для игры
+ * Все звуки синтезируются программно, без внешних файлов.
+ */
+const AudioEngine = (() => {
+  let ctx = null;
+  let enabled = true;
+
+  function getCtx() {
+    if (!ctx) {
+      try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { enabled = false; }
+    }
+    // Разблокируем AudioContext после первого взаимодействия
+    if (ctx && ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  // Базовый осциллятор с огибающей
+  function playTone(freq, type, attack, sustain, release, gainVal, when) {
+    const c = getCtx();
+    if (!c || !enabled) return;
+    const t = when || c.currentTime;
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.connect(gain);
+    gain.connect(c.destination);
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(gainVal, t + attack);
+    gain.gain.setValueAtTime(gainVal, t + attack + sustain);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + attack + sustain + release);
+    osc.start(t);
+    osc.stop(t + attack + sustain + release + 0.05);
+  }
+
+  // Шум (для бомбы)
+  function playNoise(duration, gainVal) {
+    const c = getCtx();
+    if (!c || !enabled) return;
+    const bufLen = c.sampleRate * duration;
+    const buf = c.createBuffer(1, bufLen, c.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) data[i] = (Math.random() * 2 - 1);
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    const filter = c.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 120;
+    filter.Q.value = 0.5;
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(gainVal, c.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + duration);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(c.destination);
+    src.start();
+    src.stop(c.currentTime + duration);
+  }
+
+  return {
+    // 🌸 Поймал обычный цветок — нежный мягкий звон
+    catch() {
+      playTone(880, 'sine', 0.005, 0.04, 0.18, 0.22);
+      playTone(1320, 'sine', 0.01, 0.02, 0.12, 0.10);
+    },
+
+    // 💎 Редкий предмет — переливистый аккорд
+    catchRare() {
+      const c = getCtx(); if (!c) return;
+      const t = c.currentTime;
+      [523, 659, 784, 1047].forEach((f, i) => playTone(f, 'sine', 0.01, 0.05, 0.3, 0.18, t + i * 0.05));
+    },
+
+    // 🔥 Комбо × 3+ — восходящий глиссандо
+    combo(level) {
+      const c = getCtx(); if (!c) return;
+      const t = c.currentTime;
+      const base = 330 + level * 40;
+      playTone(base, 'triangle', 0.005, 0.03, 0.15, 0.15, t);
+      playTone(base * 1.25, 'triangle', 0.005, 0.03, 0.15, 0.12, t + 0.07);
+      playTone(base * 1.5, 'triangle', 0.005, 0.03, 0.18, 0.10, t + 0.14);
+    },
+
+    // 💣 Бомба — низкий удар + шум
+    bomb() {
+      playTone(80, 'sawtooth', 0.005, 0.05, 0.35, 0.35);
+      playNoise(0.25, 0.18);
+    },
+
+    // ⏱️ Таймер последние 5 секунд — тиканье
+    tick() {
+      playTone(660, 'square', 0.002, 0.01, 0.06, 0.08);
+    },
+
+    // 🎉 Старт игры — радостный джингл
+    start() {
+      const c = getCtx(); if (!c) return;
+      const t = c.currentTime;
+      [523, 659, 784, 1047].forEach((f, i) => playTone(f, 'sine', 0.01, 0.06, 0.2, 0.2, t + i * 0.1));
+    },
+
+    // 🏆 Конец игры — финальный аккорд
+    gameOver() {
+      const c = getCtx(); if (!c) return;
+      const t = c.currentTime;
+      [392, 494, 587, 784].forEach((f, i) => playTone(f, 'sine', 0.01, 0.1, 0.6, 0.18, t + i * 0.08));
+    },
+
+    // Разблокировка при первом тапе
+    unlock() { getCtx(); }
+  };
+})();
+
+/**
+ * Настройки игры
+ */
+const CONFIG = {
+  gameDuration: 30, // секунд
+  baseSpawnInterval: 1200, // мс между появлением предметов
+  minSpawnInterval: 400, // минимальный интервал (сложность растет)
+  basketHitboxWidth: 0.7, // доля ширины корзины, считающаяся попаданием
+  comboGracePeriod: 1500, // мс, сколько держится комбо без поимки
+};
+
+/**
+ * Типы падающих предметов
+ */
+const ITEM_TYPES = [
+  { emoji: '🌸', type: 'flower', points: 1, speedMult: 1.0, weight: 40 },
+  { emoji: '🌷', type: 'flower', points: 1, speedMult: 1.1, weight: 20 },
+  { emoji: '🌻', type: 'flower', points: 3, speedMult: 1.4, weight: 15, color: '#fbc02d' }, // Редкий
+  { emoji: '💎', type: 'flower', points: 5, speedMult: 0.8, weight: 5, color: '#0288d1' },  // Очень редкий, медленный
+  { emoji: '🍀', type: 'flower', points: 2, speedMult: 1.2, weight: 10, color: '#388e3c' }, // Удача
+  { emoji: '💣', type: 'bomb', points: 0, speedMult: 1.3, weight: 10 },                     // Враг
+];
+
+// Подготовка весов для рандома
+const TOTAL_WEIGHT = ITEM_TYPES.reduce((sum, item) => sum + item.weight, 0);
+
+/**
+ * Вспомогательные функции
+ */
+const Utils = {
+  clamp: (val, min, max) => Math.min(Math.max(val, min), max),
+  rand: (min, max) => Math.random() * (max - min) + min,
+  
+  pickRandomItem: () => {
+    let roll = Math.random() * TOTAL_WEIGHT;
+    for (let item of ITEM_TYPES) {
+      if (roll < item.weight) return item;
+      roll -= item.weight;
+    }
+    return ITEM_TYPES[0];
+  }
+};
+
+/**
+ * EmojiCache: рисуем каждый эмодзи один раз на offscreen canvas,
+ * затем копируем через drawImage — экономит CPU на мобильных.
+ */
+const EmojiCache = (() => {
+  const _cache = new Map();
+
+  function get(emoji, size) {
+    // Округляем до ближайших 5px чтобы переиспользовать один кэш для близких размеров
+    const roundedSize = Math.round(size / 5) * 5;
+    const key = emoji + '_' + roundedSize;
+    if (_cache.has(key)) return _cache.get(key);
+
+    const pad = 6;
+    const dim = roundedSize + pad * 2;
+    // OffscreenCanvas не участвует в layout — быстрее создаётся
+    let oc, octx;
+    if (typeof OffscreenCanvas !== 'undefined') {
+      oc = new OffscreenCanvas(dim, dim);
+    } else {
+      oc = document.createElement('canvas');
+      oc.width = dim; oc.height = dim;
+    }
+    octx = oc.getContext('2d');
+    octx.font = roundedSize + 'px serif';
+    octx.textAlign = 'center';
+    octx.textBaseline = 'middle';
+    octx.fillText(emoji, dim / 2, dim / 2);
+
+    const entry = { canvas: oc, dim, pad };
+    _cache.set(key, entry);
+    return entry;
+  }
+
+  function warmup(types) {
+    const sizes = [30, 35, 40, 45, 50];
+    for (const t of types) {
+      for (const s of sizes) get(t.emoji, s);
+    }
+  }
+
+  return { get, warmup };
+})();
+
+/**
+ * Класс падающего предмета (Flower или Bomb)
+ */
+class DroppingItem {
+  constructor(gameLeft = 0, gameRight = window.innerWidth) {
+    const config = Utils.pickRandomItem();
+    Object.assign(this, config);
+    
+    this.size = Utils.rand(30, 50);
+    this.x = Utils.rand(gameLeft + this.size, gameRight - this.size);
+    this.y = -this.size;
+    
+    // Базовая скорость зависит от высоты экрана, чтобы на всех устройствах летело примерно одинаково долго
+    const baseSpeed = window.innerHeight / 4; // Пикселей в секунду
+    this.speed = baseSpeed * this.speedMult * Utils.rand(0.9, 1.1);
+    
+    this.angle = Utils.rand(0, 360);
+    this.rotationSpeed = Utils.rand(-90, 90); // Градусов в секунду
+    this.wobbleOffset = Math.random() * Math.PI * 2;
+    this.wobbleSpeed = Utils.rand(1, 3);
+    
+    this.isCaught = false;
+    this.isDead = false;
+  }
+
+  update(dt, basket, onCatch, onMiss) {
+    if (this.isDead) return;
+
+    // Движение вниз
+    this.y += this.speed * dt;
+    
+    // Вращение и легкое покачивание
+    this.angle += this.rotationSpeed * dt;
+    this.x += Math.sin(this.y * 0.01 * this.wobbleSpeed + this.wobbleOffset) * 0.5;
+
+    // Поимка: цветок пересёк верхний край горлышка (basket.y) и
+    // ещё не ушёл ниже дна тела корзины (+ 82px = кант 14 + тело 68)
+    if (!this.isCaught && this.y + this.size * 0.5 > basket.y) {
+      const hitW = basket.width * CONFIG.basketHitboxWidth;
+      const hitLeft  = basket.x - hitW / 2;
+      const hitRight = basket.x + hitW / 2;
+      const hitBottom = basket.y + 82; // горлышко + тело
+
+      if (this.x > hitLeft && this.x < hitRight && this.y - this.size * 0.5 < hitBottom) {
+        this.isCaught = true;
+        this.isDead = true;
+        onCatch(this);
+      }
+    }
+
+    // Проверка ухода за экран (кэшированная высота — без window в цикле)
+    if (!this.isDead && this.y > (basket.screenH || window.innerHeight) + this.size) {
+      this.isDead = true;
+      onMiss(this);
+    }
+  }
+
+  draw(ctx) {
+    if (this.isDead) return;
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle * Math.PI / 180);
+
+    // Берём кэшированный offscreen canvas вместо fillText каждый кадр
+    const cached = EmojiCache.get(this.emoji, this.size);
+    ctx.drawImage(cached.canvas, -cached.dim / 2, -cached.dim / 2);
+
+    ctx.restore();
+  }
+}
+
+/**
+ * Класс частиц (эффекты)
+ */
+class Particle {
+  constructor(x, y, color, emoji) {
+    this.x = x;
+    this.y = y;
+    this.emoji = emoji;
+    this.color = color;
+    
+    const angle = Utils.rand(0, Math.PI * 2);
+    const speed = Utils.rand(2, 5);
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed - Utils.rand(1, 3); // Изначально чуть вверх
+    
+    this.gravity = 0.1;
+    this.alpha = 1;
+    this.decay = Utils.rand(0.015, 0.03);
+    this.size = Utils.rand(10, 20);
+    this.angle = Utils.rand(0, 360);
+    this.rotSpd = Utils.rand(-10, 10);
+  }
+
+  update() {
+    this.vx *= 0.98;
+    this.vy += this.gravity;
+    this.x += this.vx;
+    this.y += this.vy;
+    this.alpha -= this.decay;
+    this.angle += this.rotSpd;
+  }
+
+  draw(ctx) {
+    if (this.alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle * Math.PI / 180);
+    
+    if (this.emoji) {
+      // Используем кэш вместо fillText
+      const cached = EmojiCache.get(this.emoji, this.size);
+      ctx.drawImage(cached.canvas, -cached.dim / 2, -cached.dim / 2);
+    } else {
+      ctx.fillStyle = this.color || '#ff69b4';
+      ctx.beginPath();
+      ctx.arc(0, 0, this.size/2, 0, Math.PI*2);
+      ctx.fill();
+    }
+    
+    ctx.restore();
+  }
+}
+
+
+/**
+ * MenuRain — плавный дождь из цветов на стартовом/финальном экране.
+ * Рисует на #menuCanvas (z-index 5), поверх фона, под картой.
+ */
+const MenuRain = (() => {
+  const EMOJIS = ['🌸','🌷','🌼','🌺','🌻','💐','🌹','🍀','✨','💖'];
+  let canvas, ctx, rafId, running = false, W = 0, H = 0, lastTs = 0;
+  const petals = [];
+  const MAX = 40;
+
+  class Petal {
+    constructor(scatter) { this.init(scatter); }
+    init(scatter) {
+      this.emoji  = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+      this.size   = 16 + Math.random() * 26;          // 16-42px
+      this.x      = Math.random() * W;
+      this.y      = scatter ? Math.random() * H : -50; // разброс при старте
+      this.vy     = 55  + Math.random() * 85;          // скорость падения px/s
+      this.vx     = (Math.random() - 0.5) * 22;        // горизонтальный дрейф
+      this.wobOff = Math.random() * Math.PI * 2;       // фаза синуса
+      this.wobAmp = 20 + Math.random() * 35;           // ширина покачивания
+      this.wobSpd = 0.5 + Math.random() * 1.1;         // частота покачивания
+      this.rot    = Math.random() * 360;
+      this.rotSpd = (Math.random() - 0.5) * 55;       // °/с
+      this.alpha  = 0;                                  // fade-in
+      this.aTarget= 0.45 + Math.random() * 0.4;
+    }
+    update(dt) {
+      this.alpha = Math.min(this.alpha + dt * 2.2, this.aTarget);
+      this.y  += this.vy * dt;
+      this.x  += this.vx * dt
+               + Math.sin(this.wobOff + this.y * 0.008 * this.wobSpd) * this.wobAmp * dt;
+      this.rot += this.rotSpd * dt;
+      if (this.y > H + 60) this.init(false);  // перезапуск сверху
+    }
+    draw() {
+      const c   = EmojiCache.get(this.emoji, Math.round(this.size / 5) * 5 || 20);
+      const rad = this.rot * Math.PI / 180;
+      const cos = Math.cos(rad), sin = Math.sin(rad);
+      // setTransform вместо save/translate/rotate/restore — ~2× быстрее на мобильных
+      ctx.globalAlpha = this.alpha;
+      ctx.setTransform(cos, sin, -sin, cos, this.x, this.y);
+      ctx.drawImage(c.canvas, -c.dim / 2, -c.dim / 2);
+    }
+  }
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+
+  function loop(ts) {
+    if (!running) return;
+    const dt = Math.min((ts - lastTs) / 1000, 0.05);
+    lastTs = ts;
+    ctx.clearRect(0, 0, W, H);
+    for (const p of petals) { p.update(dt); p.draw(); }
+    // Сбрасываем матрицу и alpha один раз после всего батча
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    rafId = requestAnimationFrame(loop);
+  }
+
+  return {
+    init() {
+      canvas = document.getElementById('menuCanvas');
+      ctx    = canvas.getContext('2d');
+      resize();
+      window.addEventListener('resize', resize);
+      // scatter=true — разбрасываем по всему экрану сразу (не ждём падения)
+      for (let i = 0; i < MAX; i++) petals.push(new Petal(true));
+    },
+    start() {
+      if (running) return;
+      running = true;
+      lastTs  = performance.now();
+      rafId   = requestAnimationFrame(loop);
+    },
+    stop() {
+      running = false;
+      if (rafId) cancelAnimationFrame(rafId);
+    },
+    clear() {
+      if (ctx) ctx.clearRect(0, 0, W, H);
+    }
+  };
+})();
+
+/**
+ * Основной объект игры (Engine)
+ */
+const Game = {
+  state: 'menu', // menu, playing, paused, over
+  score: 0,
+  lives: 3,
+  timeLeft: CONFIG.gameDuration,
+  combo: 1,
+  
+  items: [],
+  particles: [],
+  
+  basket: { x: window.innerWidth / 2, y: 0, width: 100, ref: null },
+  
+  canvas: null,
+  ctx: null,
+  lastTime: 0,
+  spawnTimer: 0,
+  comboTimer: 0,
+  rafId: null,
+  gameIntervalId: null,
+
+  init: function() {
+    this.canvas = document.getElementById('gameCanvas');
+    this.ctx = this.canvas.getContext('2d');
+    this.basket.ref = document.getElementById('basket');
+    this.basketFlowersEl = document.getElementById('basketFlowers');
+
+    // Bound-методы создаём один раз — не аллоцируем closure в горячем цикле
+    this._boundLoop = (ts) => this.loop(ts);
+    this._onCatch   = (item) => this.onItemCaught(item);
+    this._onMiss    = (item) => this.onItemMissed(item);
+
+    // Кэшируем часто используемые DOM-элементы
+    this._timerBar  = document.getElementById('timerBar');
+    this._elScore   = document.getElementById('scoreVal');
+    this._elCombo   = document.getElementById('comboVal');
+    this._elLives   = document.getElementById('livesVal');
+    this._lastLives = -1; // принудительный первый рендер сердец
+    this._lastScore = -1;
+    this._lastCombo = -1;
+
+    this.resize();
+    window.addEventListener('resize', () => this.resize());
+    
+    // Прогрев кэша эмодзи — рисуем каждый символ один раз заранее
+    EmojiCache.warmup(ITEM_TYPES);
+
+    // Шрифт для попапов устанавливается один раз — смена ctx.font дорогая операция
+    this._popupFont = 'bold 24px Nunito, sans-serif';
+
+    // Фоновый дождь на стартовом экране
+    MenuRain.init();
+    MenuRain.start();
+    
+    // Управление (мышь и тач)
+    const handleMove = (e) => {
+      if (this.state !== 'playing') return;
+      let clientX;
+      if (e.touches) {
+        clientX = e.touches[0].clientX;
+      } else {
+        clientX = e.clientX;
+      }
+      const left  = this.gameLeft  + this.basket.width / 2;
+      const right = this.gameRight - this.basket.width / 2;
+      this.basket.x = Utils.clamp(clientX, left, right);
+    };
+    
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('touchmove', handleMove, { passive: false });
+    // Предотвращаем скролл на мобильных при игре
+    document.addEventListener('touchstart', (e) => { if(this.state === 'playing') e.preventDefault(); }, { passive: false });
+
+    // Разблокируем AudioContext при первом взаимодействии
+    document.addEventListener('mousedown', () => AudioEngine.unlock(), { once: true });
+    document.addEventListener('touchstart', () => AudioEngine.unlock(), { once: true });
+
+    // Кнопка паузы
+    document.getElementById('pauseBtn').addEventListener('click', () => this.togglePause());
+  },
+
+  resize: function() {
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    this.canvas.width  = W;
+    this.canvas.height = H;
+    this._screenH = H; // кэш — не обращаемся к window в горячем цикле
+
+    // ── Ограничение игрового поля по ширине ──────────────────────────────
+    const MAX_GAME_W = 800;
+    const gameW      = Math.min(W, MAX_GAME_W);
+    this.gameLeft    = (W - gameW) / 2;   // левая граница игровой зоны
+    this.gameRight   = this.gameLeft + gameW; // правая граница
+
+    this.basket.width = 140;
+
+    const groundH = H * 0.1;
+    this.basket.y = H - groundH - 8 - 68 - 14;
+
+    if (this.state !== 'playing') {
+      this.basket.x = W / 2;
+    }
+  },
+
+  start: function() {
+    // Сброс состояний
+    this.score = 0;
+    this.lives = 3;
+    this.timeLeft = CONFIG.gameDuration;
+    this.combo = 1;
+    this.items = [];
+    this.particles = [];
+    this.spawnTimer = 0;
+    this.comboTimer = 0;
+    this.lastTime = performance.now();
+    this.caughtFlowersList = [];
+    if (this.basketFlowersEl) this.basketFlowersEl.innerHTML = '';
+    this.basket.ref.classList.remove('slow-pulse', 'catch-bounce', 'damage');
+    
+    // Обновление UI
+    this.updateHud();
+    document.getElementById('startScreen').classList.add('hidden');
+    document.getElementById('endScreen').classList.add('hidden');
+    document.getElementById('gameHud').style.display = 'flex';
+    document.getElementById('timerGui').style.display = 'block';
+    
+    this.state = 'playing';
+    AudioEngine.start();
+
+    // Останавливаем дождь на время игры
+    MenuRain.stop();
+    MenuRain.clear();
+
+    // Запуск цикла
+    if (this.rafId) cancelAnimationFrame(this.rafId);
+    this.rafId = requestAnimationFrame(this._boundLoop);
+  },
+
+  togglePause: function() {
+    if (this.state === 'playing') {
+      this.state = 'paused';
+      document.getElementById('pauseBtn').textContent = '▶️';
+      // Можно показать оверлей паузы при желании
+    } else if (this.state === 'paused') {
+      this.state = 'playing';
+      document.getElementById('pauseBtn').textContent = '⏸️';
+      this.lastTime = performance.now(); // Чтобы не было скачка времени
+      requestAnimationFrame(this._boundLoop);
+    }
+  },
+
+  gameOver: function() {
+    this.state = 'over';
+    AudioEngine.gameOver();
+    
+    document.getElementById('gameHud').style.display = 'none';
+    document.getElementById('timerGui').style.display = 'none';
+    document.getElementById('endScreen').classList.remove('hidden');
+    
+    document.getElementById('endScore').textContent = this.score;
+    
+    let title, emoji, msg, grade;
+    
+    if (this.score === 0) {
+      title = "Начнем?"; emoji = "🌱"; grade = "☆☆☆";
+        msg = PLAYER_NAME 
+        ? `${PLAYER_NAME}, цветы заждались в саду. Стоит попробовать снова!` 
+        : "Цветы заждались в саду. Стоит попробовать снова!";
+    } else if (this.score < 50) {
+      title = "Хорошо!"; emoji = "🌷"; grade = "★☆☆";
+      msg = PLAYER_NAME 
+        ? `${PLAYER_NAME}, начало положено! Этот букет украсит любой день.` 
+        : "Начало положено! Этот букет украсит любой день.";
+    } else if (this.score < 120) {
+      title = "Отлично!"; emoji = "🌸"; grade = "★★☆";
+      msg = PLAYER_NAME 
+        ? `${PLAYER_NAME}, собран прекрасный букет! Праздник стал ярче.` 
+        : "Собран прекрасный букет! Праздник стал ярче.";
+    } else {
+      title = "Великолепно!"; emoji = "👑"; grade = "★★★";
+      msg = PLAYER_NAME 
+        ? `${PLAYER_NAME}, результат достоин восхищения! Это лучший букет дня.` 
+        : "Результат достоин восхищения! Это лучший букет дня.";
+    }
+    
+    document.getElementById('endTitle').textContent = title;
+    document.getElementById('endEmoji').textContent = emoji;
+    document.getElementById('endGrade').textContent = grade;
+
+    // Полностью нейтральный финал без "желаю/желаем тебе/вам"
+    const finalWish = `Пусть каждый день будет наполнен нежностью и ароматом весенних цветов! 🌷`;
+    document.getElementById('endMessage').textContent = msg + `\n\n` + finalWish;
+
+    // Возобновляем дождь на финальном экране
+    MenuRain.start();
+
+    for(let i=0; i<30; i++) {
+      this.particles.push(new Particle(window.innerWidth/2, window.innerHeight/2, null, Utils.pickRandomItem().emoji));
+    }
+  },
+
+  /**
+   * Основной игровой цикл (60 FPS)
+   */
+  loop: function(ts) {
+    if (this.state !== 'playing') return;
+    
+    const dt = (ts - this.lastTime) / 1000; // Дельта времени в секундах
+    this.lastTime = ts;
+    
+    // Таймер (вместо setInterval tick)
+    this.timeLeft -= dt;
+    this._tickAccum = (this._tickAccum || 0) + dt;
+    if (this._tickAccum >= 0.1) {
+      this._tickAccum -= 0.1;
+      const per = Math.max(0, this.timeLeft / CONFIG.gameDuration) * 100;
+      this._timerBar.style.width = per + '%';
+      this._timerBar.style.background = per < 25
+        ? '#ef5350'
+        : 'linear-gradient(90deg, #ff80ab, var(--accent))';
+      if (this.timeLeft <= 5 && this.timeLeft > 0) AudioEngine.tick();
+    }
+    if (this.timeLeft <= 0) { this.timeLeft = 0; this.gameOver(); return; }
+
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    
+    // 1. Спавн предметов
+    this.spawnTimer += dt * 1000;
+    // Сложность растет: интервал спавна уменьшается со временем
+    const progress = 1 - (this.timeLeft / CONFIG.gameDuration);
+    const currentSpawnInterval = CONFIG.baseSpawnInterval - (CONFIG.baseSpawnInterval - CONFIG.minSpawnInterval) * progress;
+    
+    if (this.spawnTimer > currentSpawnInterval) {
+      this.items.push(new DroppingItem(this.gameLeft, this.gameRight));
+      this.spawnTimer = 0;
+    }
+    
+    // 2. Управление комбо (сброс по таймауту)
+    if (this.combo > 1) {
+      this.comboTimer += dt * 1000;
+      if (this.comboTimer > CONFIG.comboGracePeriod) {
+        this.combo = 1;
+        this.updateHud();
+      }
+    }
+
+    // 3. Обновление и отрисовка предметов — swap-and-pop: O(1) удаление без сдвига массива
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const item = this.items[i];
+      item.update(dt, this.basket, this._onCatch, this._onMiss);
+      item.draw(this.ctx);
+      if (item.isDead) {
+        this.items[i] = this.items[this.items.length - 1];
+        this.items.pop();
+      }
+    }
+    
+    // 4. Частицы — swap-and-pop: O(1) удаление без сдвига массива
+    let pi = 0;
+    while (pi < this.particles.length) {
+      const p = this.particles[pi];
+      p.update(); p.draw(this.ctx);
+      if (p.alpha <= 0) {
+        this.particles[pi] = this.particles[this.particles.length - 1];
+        this.particles.pop();
+      } else { pi++; }
+    }
+
+    // 4b. Попапы очков (на canvas, без DOM)
+    this._drawPopups(dt);
+    
+    // 5. Визуализация корзины (плавное следование за курсором)
+    this.basket.screenH = this._screenH; // DroppingItem не дёргает window
+    const currentLeft = this._basketX !== undefined ? this._basketX : window.innerWidth / 2;
+    const newLeft = currentLeft + (this.basket.x - currentLeft) * 0.4;
+    this._basketX = newLeft;
+    this.basket.ref.style.setProperty('--basket-x', newLeft + 'px');
+
+    this.rafId = requestAnimationFrame(this._boundLoop);
+  },
+
+  onItemCaught: function(item) {
+    // Bounce-анимация корзины при любой поимке — без forced reflow
+    this.basket.ref.classList.remove('catch-bounce');
+    this.basket.ref.classList.add('catch-bounce');
+    setTimeout(() => this.basket.ref.classList.remove('catch-bounce'), 300);
+
+    if (item.type === 'flower') {
+      const pointsGained = item.points * this.combo;
+      this.score += pointsGained;
+      this.combo = Math.min(this.combo + 1, 10);
+      this.comboTimer = 0;
+
+      // Звук: редкий или обычный цветок, + комбо-джингл на x3/x5/x7
+      if (item.points >= 5) AudioEngine.catchRare();
+      else AudioEngine.catch();
+      if (this.combo === 3 || this.combo === 5 || this.combo === 7 || this.combo === 10) {
+        AudioEngine.combo(this.combo);
+      }
+
+      // Добавляем цветок в корзину (видимый букет)
+      this.addFlowerToBasket(item.emoji);
+
+      this.spawnScorePopup(item.x, this.basket.y, `+${pointsGained}`, item.color || varAccent);
+      for(let i=0; i<5; i++) this.particles.push(new Particle(item.x, this.basket.y, item.color));
+
+    } else if (item.type === 'bomb') {
+      AudioEngine.bomb();
+      this.lives--;
+      this.combo = 1;
+      this.basket.ref.classList.add('damage');
+      setTimeout(() => this.basket.ref.classList.remove('damage'), 400);
+      for(let i=0; i<10; i++) this.particles.push(new Particle(item.x, this.basket.y, '#212121'));
+      if (this.lives <= 0) { this.gameOver(); }
+    }
+
+    this.updateHud();
+  },
+
+  // Добавляет эмодзи цветка внутрь CSS-корзины
+  addFlowerToBasket: function(emoji) {
+    if (!this.caughtFlowersList) this.caughtFlowersList = [];
+    this.caughtFlowersList.push(emoji);
+    // Максимум 14 штук — при большем количестве цветы всё равно не видны
+    if (this.caughtFlowersList.length > 14) this.caughtFlowersList.shift();
+    if (!this.basketFlowersEl) return;
+
+    // Не перерисовываем всё — только добавляем последний цветок,
+    // чтобы анимация bkFlowerDrop сработала только на новом элементе
+    const span = document.createElement('span');
+    span.className = 'bk-f';
+    span.textContent = emoji;
+    this.basketFlowersEl.appendChild(span);
+
+    // Если элементов больше максимума — удаляем первый (самый старый)
+    while (this.basketFlowersEl.children.length > 14) {
+      this.basketFlowersEl.removeChild(this.basketFlowersEl.firstChild);
+    }
+  },
+
+  onItemMissed: function(item) {
+    // Если пропустили цветок (не бомбу), комбо сбрасывается
+    if (item.type === 'flower') {
+      // Не сбрасываем мгновенно, даем шанс поймать следующий (comboGracePeriod работает в loop)
+    }
+  },
+
+  updateHud: function() {
+    // Dirty flags — пишем в DOM только если значение изменилось
+    if (this._lastScore !== this.score) {
+      this._lastScore = this.score;
+      this._elScore.textContent = this.score;
+    }
+    if (this._lastCombo !== this.combo) {
+      this._lastCombo = this.combo;
+      this._elCombo.textContent = `x${this.combo}`;
+      this._elCombo.style.color = this.combo >= 8 ? '#ff6f00'
+                                 : this.combo >= 4 ? '#ec407a' : '';
+    }
+    if (this._lastLives !== this.lives) {
+      this._lastLives = this.lives;
+      let h = '';
+      for (let i = 0; i < 3; i++) h += i < this.lives ? '❤️' : '🖤';
+      this._elLives.innerHTML = h;
+    }
+  },
+
+  spawnScorePopup: function(x, y, text, color) {
+    // Рисуем попап прямо на canvas — без DOM, без layout thrashing
+    this._popups = this._popups || [];
+    this._popups.push({ x, y, text, color, age: 0, duration: 0.8 });
+  },
+
+  _drawPopups: function(dt) {
+    if (!this._popups || !this._popups.length) return;
+    const ctx = this.ctx;
+    // Устанавливаем шрифт только если он мог смениться (после save/restore в других методах)
+    // Сравниваем со строкой — дешевле чем всегда писать в ctx.font
+    if (ctx.font !== this._popupFont) {
+      ctx.font = this._popupFont;
+      ctx.textAlign = 'center';
+    }
+    for (let i = this._popups.length - 1; i >= 0; i--) {
+      const p = this._popups[i];
+      p.age += dt;
+      const t = p.age / p.duration;
+      if (t >= 1) { this._popups.splice(i, 1); continue; }
+      ctx.globalAlpha = 1 - t;
+      ctx.fillStyle = p.color || '#ff69b4';
+      ctx.fillText(p.text, p.x, p.y + (-60 * t));
+    }
+    ctx.globalAlpha = 1;
+  }
+};
+
+// CSS переменные в JS
+const varAccent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+
+// ── URL-параметр ?name=Имя ─────────────────────────────────────────────────
+const PLAYER_NAME = (() => {
+  const raw = new URLSearchParams(window.location.search).get('name');
+  if (!raw) return null;
+  // Обрезаем до 30 символов и убираем HTML-спецсимволы
+  return raw.trim().slice(0, 30).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
+})();
+
+function applyPlayerName() {
+  if (!PLAYER_NAME) return;
+  // Заголовок стартового экрана
+  document.querySelector('#startScreen .title').innerHTML =
+    `С 8 Марта,<br>${PLAYER_NAME}!`;
+  // Подзаголовок
+  document.querySelector('#startScreen .subtitle').innerHTML =
+    `Желаю море радости и света,<br>
+    Чтоб каждый миг был полон красоты!<br>
+    Скорее, ${PLAYER_NAME}, собери букеты,<br>
+    Пусть сбудутся весенние мечты!`;
+  // Вкладка браузера
+  document.title = `С 8 Марта, ${PLAYER_NAME}! 🌸`;
+}
+
+// ТОЧКА ВХОДА
+window.addEventListener('load', () => {
+  applyPlayerName();
+  Game.init();
+});
+
+</script>
+</body>
+</html>
